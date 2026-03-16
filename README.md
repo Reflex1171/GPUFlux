@@ -32,7 +32,7 @@ GPUFlux handles the rest: finds the cheapest available GPU across providers, pro
 ### Installation
 
 ```bash
-pip install gpuflux
+pip install git+https://github.com/Reflex1171/GPUFlux.git
 ```
 
 ### Configure Providers
