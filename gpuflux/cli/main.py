@@ -60,14 +60,41 @@ def init() -> None:
         console.print("⚠️  No providers configured. Run [bold]gpuflux init[/bold] again when you have API keys.\n")
 
 
+def _demo_offerings() -> list:
+    """Return realistic mock offerings for demo mode."""
+    from datetime import datetime
+    from gpuflux.core.models import GPUOffering, GPUType, ProviderName
+    return [
+        GPUOffering(provider=ProviderName.LAMBDA_LABS, gpu_type=GPUType.A100_80GB, vram_gb=80, price_per_hour=1.10, available=3, region="us-west-1", spot=False, fetched_at=datetime.utcnow()),
+        GPUOffering(provider=ProviderName.RUNPOD,      gpu_type=GPUType.A100_80GB, vram_gb=80, price_per_hour=1.34, available=8, region="us-east-1", spot=True,  fetched_at=datetime.utcnow()),
+        GPUOffering(provider=ProviderName.RUNPOD,      gpu_type=GPUType.A100_80GB, vram_gb=80, price_per_hour=1.64, available=12, region="us-east-1", spot=False, fetched_at=datetime.utcnow()),
+        GPUOffering(provider=ProviderName.LAMBDA_LABS, gpu_type=GPUType.H100,      vram_gb=80, price_per_hour=2.49, available=2, region="us-east-1", spot=False, fetched_at=datetime.utcnow()),
+        GPUOffering(provider=ProviderName.RUNPOD,      gpu_type=GPUType.H100,      vram_gb=80, price_per_hour=2.79, available=5, region="eu-central-1", spot=False, fetched_at=datetime.utcnow()),
+        GPUOffering(provider=ProviderName.LAMBDA_LABS, gpu_type=GPUType.A10G,      vram_gb=24, price_per_hour=0.60, available=10, region="us-west-1", spot=False, fetched_at=datetime.utcnow()),
+        GPUOffering(provider=ProviderName.RUNPOD,      gpu_type=GPUType.RTX_4090,  vram_gb=24, price_per_hour=0.74, available=20, region="us-east-1", spot=False, fetched_at=datetime.utcnow()),
+        GPUOffering(provider=ProviderName.AWS,         gpu_type=GPUType.A100_80GB, vram_gb=80, price_per_hour=3.97, available=8, region="us-east-1", spot=True,  fetched_at=datetime.utcnow()),
+    ]
+
+
 @cli.command()
 @click.option("--gpu", default=None, help="Filter by GPU type (e.g. A100, H100)")
 @click.option("--max-price", default=None, type=float, help="Maximum $/hr")
 @click.option("--sort", "sort_by", default="price", type=click.Choice(["price", "available"]))
-def prices(gpu: str | None, max_price: float | None, sort_by: str) -> None:
+@click.option("--demo", is_flag=True, help="Run with mock data — no API keys required")
+def prices(gpu: str | None, max_price: float | None, sort_by: str, demo: bool) -> None:
     """Show live GPU pricing across all providers."""
-    config = Config.load()
-    offerings = asyncio.run(fetch_prices(config, gpu_filter=gpu, max_price=max_price, sort_by=sort_by))
+    if demo:
+        offerings = _demo_offerings()
+        if gpu:
+            gpu_upper = gpu.upper().replace(" ", "_")
+            offerings = [o for o in offerings if gpu_upper in o.gpu_type.value.upper()]
+        if max_price is not None:
+            offerings = [o for o in offerings if o.price_per_hour <= max_price]
+        offerings.sort(key=lambda o: o.price_per_hour if sort_by == "price" else -o.available)
+        console.print("\n[dim]⚡ Demo mode — prices are illustrative, not live.[/dim]")
+    else:
+        config = Config.load()
+        offerings = asyncio.run(fetch_prices(config, gpu_filter=gpu, max_price=max_price, sort_by=sort_by))
 
     if not offerings:
         console.print("\n⚠️  No offerings found. Check your config with [bold]gpuflux init[/bold].\n")
