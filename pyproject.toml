@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpuflux"
+version = "0.1.0"
+description = "Stop overpaying for GPU compute. Find the cheapest provider and deploy in one command."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Noah Akers-Douglas"},
+]
+keywords = ["gpu", "cloud", "ai", "ml", "infrastructure", "compute", "cost-optimization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "click>=8.1.0",
+    "httpx>=0.25.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1.0",
+    "mypy>=1.5",
+]
+
+[project.scripts]
+gpuflux = "gpuflux.cli.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/noahad/gpuflux"
+Repository = "https://github.com/noahad/gpuflux"
+Issues = "https://github.com/noahad/gpuflux/issues"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
