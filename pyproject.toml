@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpuflux"
-version = "0.1.0"
+version = "0.1.1"
 description = "Stop overpaying for GPU compute. Find the cheapest provider and deploy in one command."
 readme = "README.md"
 license = {text = "MIT"}
