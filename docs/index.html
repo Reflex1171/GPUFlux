@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPUFlux — Stop Overpaying for GPU Compute</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e17;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2332;
+  --accent: #3b82f6;
+  --accent-glow: #60a5fa;
+  --green: #10b981;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --text-bright: #f8fafc;
+  --border: #1e293b;
+  --font-display: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-display);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ── NOISE OVERLAY ── */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── GLOW GRID BG ── */
+.hero-bg {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59,130,246,0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 80% 20%, rgba(16,185,129,0.06) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.grid-lines {
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 100%;
+  background-image:
+    linear-gradient(rgba(59,130,246,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,0.04) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse 70% 50% at 50% 30%, black, transparent);
+  pointer-events: none;
+}
+
+/* ── NAV ── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(10,14,23,0.8);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-logo {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--text-bright);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-logo span { color: var(--accent); }
+
+.nav-links { display: flex; gap: 2rem; align-items: center; }
+
+.nav-links a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.nav-links a:hover { color: var(--text-bright); }
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  padding: 0.6rem 1.4rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+  box-shadow: 0 0 30px rgba(59,130,246,0.3);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  padding: 0.6rem 1.4rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent-glow);
+  background: rgba(59,130,246,0.05);
+}
+
+/* ── HERO ── */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8rem 2rem 4rem;
+}
+
+.hero-content {
+  max-width: 800px;
+  text-align: center;
+  position: relative;
+  z-index: 2;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(59,130,246,0.1);
+  border: 1px solid rgba(59,130,246,0.2);
+  padding: 0.4rem 1rem;
+  border-radius: 100px;
+  font-size: 0.8rem;
+  color: var(--accent-glow);
+  font-weight: 500;
+  margin-bottom: 2rem;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.hero-badge .dot {
+  width: 6px; height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+h1 {
+  font-size: clamp(2.8rem, 6vw, 4.5rem);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text-bright);
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.03em;
+  animation: fadeInUp 0.6s ease-out 0.1s both;
+}
+
+h1 .gradient {
+  background: linear-gradient(135deg, var(--accent-glow), var(--green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-sub {
+  font-size: 1.25rem;
+  color: var(--text-dim);
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  font-weight: 300;
+  line-height: 1.7;
+  animation: fadeInUp 0.6s ease-out 0.2s both;
+}
+
+.hero-ctas {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  animation: fadeInUp 0.6s ease-out 0.3s both;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── TERMINAL DEMO ── */
+.terminal-section {
+  padding: 2rem 2rem 6rem;
+  display: flex;
+  justify-content: center;
+}
+
+.terminal {
+  max-width: 780px;
+  width: 100%;
+  background: #0d1117;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.5), 0 0 60px rgba(59,130,246,0.06);
+  animation: fadeInUp 0.8s ease-out 0.5s both;
+}
+
+.terminal-header {
+  padding: 0.75rem 1rem;
+  background: #161b22;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.terminal-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+}
+
+.terminal-dot.r { background: #ff5f57; }
+.terminal-dot.y { background: #febc2e; }
+.terminal-dot.g { background: #28c840; }
+
+.terminal-title {
+  flex: 1;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.terminal-body {
+  padding: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.8;
+  overflow-x: auto;
+}
+
+.terminal-body .prompt { color: var(--green); }
+.terminal-body .cmd { color: var(--text-bright); }
+.terminal-body .flag { color: var(--yellow); }
+.terminal-body .comment { color: #6b7280; }
+.terminal-body .header-row { color: var(--accent-glow); font-weight: 700; }
+.terminal-body .cheap { color: var(--green); }
+.terminal-body .mid { color: var(--yellow); }
+.terminal-body .expensive { color: var(--red); }
+.terminal-body .divider { color: #374151; }
+
+/* ── SAVINGS COUNTER ── */
+.savings-strip {
+  padding: 3rem 2rem;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(16,185,129,0.03) 0%, transparent 100%);
+}
+
+.savings-strip p {
+  font-size: 1rem;
+  color: var(--text-dim);
+  margin-bottom: 0.5rem;
+}
+
+.savings-number {
+  font-family: var(--font-mono);
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-weight: 700;
+  color: var(--green);
+  letter-spacing: -0.02em;
+}
+
+.savings-sub {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  margin-top: 0.5rem;
+}
+
+/* ── PROBLEM / SOLUTION ── */
+.section {
+  padding: 6rem 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+
+.section h2 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.section p.lead {
+  font-size: 1.15rem;
+  color: var(--text-dim);
+  max-width: 700px;
+  line-height: 1.8;
+  font-weight: 300;
+}
+
+/* ── PROBLEM CARDS ── */
+.problem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 3rem;
+}
+
+.problem-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+  transition: all 0.3s;
+}
+
+.problem-card:hover {
+  border-color: rgba(59,130,246,0.3);
+  background: var(--bg-card-hover);
+  transform: translateY(-2px);
+}
+
+.problem-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.problem-card h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 0.75rem;
+}
+
+.problem-card p {
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+/* ── HOW IT WORKS ── */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 2rem;
+  margin-top: 3rem;
+}
+
+.step {
+  position: relative;
+  padding: 2rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: all 0.3s;
+}
+
+.step:hover {
+  border-color: rgba(59,130,246,0.3);
+  background: var(--bg-card-hover);
+}
+
+.step-num {
+  font-family: var(--font-mono);
+  font-size: 3rem;
+  font-weight: 800;
+  color: rgba(59,130,246,0.15);
+  line-height: 1;
+  margin-bottom: 1rem;
+}
+
+.step h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 0.5rem;
+}
+
+.step p {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+/* ── PROVIDERS ── */
+.providers-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.provider-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.provider-chip:hover {
+  border-color: var(--accent);
+  background: rgba(59,130,246,0.05);
+}
+
+.provider-chip .status {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+
+.provider-chip .status.live { background: var(--green); }
+.provider-chip .status.soon { background: var(--yellow); }
+.provider-chip .status.planned { background: var(--text-dim); }
+
+/* ── FOR INVESTORS ── */
+.investor-section {
+  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(59,130,246,0.02) 0%, transparent 100%);
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2.5rem;
+}
+
+.metric-card {
+  text-align: center;
+  padding: 2rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent-glow);
+  margin-bottom: 0.5rem;
+}
+
+.metric-label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+/* ── CTA ── */
+.cta-section {
+  padding: 8rem 2rem;
+  text-align: center;
+  position: relative;
+}
+
+.cta-section::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(59,130,246,0.08), transparent 70%);
+  pointer-events: none;
+}
+
+.cta-section h2 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 1rem;
+}
+
+.cta-section p {
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  margin-bottom: 2.5rem;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── FOOTER ── */
+footer {
+  padding: 3rem 2rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+footer p {
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+footer a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+footer a:hover { color: var(--accent-glow); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  nav { padding: 0.75rem 1rem; }
+  .nav-links { gap: 1rem; }
+  .nav-links a:not(.btn-primary) { display: none; }
+  .hero { padding: 6rem 1.5rem 3rem; }
+  .section { padding: 4rem 1.5rem; }
+  .terminal-body { font-size: 0.7rem; padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo"><span>⚡</span> GPUFlux</a>
+  <div class="nav-links">
+    <a href="#problem">Problem</a>
+    <a href="#how">How It Works</a>
+    <a href="#investors">Investors</a>
+    <a href="https://github.com/Reflex1171/GPUFlux" class="btn-primary">★ GitHub</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="grid-lines"></div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="dot"></span> Open source &middot; Now in alpha</div>
+    <h1>Stop overpaying for<br><span class="gradient">GPU compute.</span></h1>
+    <p class="hero-sub">GPUFlux compares live pricing across every GPU provider and deploys your AI workload to the cheapest option — in one command.</p>
+    <div class="hero-ctas">
+      <a href="https://github.com/Reflex1171/GPUFlux" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+      <a href="#how" class="btn-secondary">See how it works →</a>
+    </div>
+  </div>
+</section>
+
+<!-- TERMINAL -->
+<div class="terminal-section">
+  <div class="terminal">
+    <div class="terminal-header">
+      <div class="terminal-dot r"></div>
+      <div class="terminal-dot y"></div>
+      <div class="terminal-dot g"></div>
+      <div class="terminal-title">bash — gpuflux</div>
+    </div>
+    <div class="terminal-body">
+      <span class="prompt">$</span> <span class="cmd">gpuflux prices</span> <span class="flag">--gpu A100</span><br><br>
+      <span class="comment"># ⚡ Live GPU Prices — updated 2 seconds ago</span><br><br>
+      <span class="header-row">Provider &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GPU &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;$/hr &nbsp;&nbsp;&nbsp;Available &nbsp;Region</span><br>
+      <span class="divider">─────────────────────────────────────────────────────</span><br>
+      <span class="cheap">Lambda Labs &nbsp;&nbsp;&nbsp;A100 80GB &nbsp;$1.10 &nbsp;&nbsp;3 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;us-west</span><br>
+      <span class="cheap">RunPod (spot) &nbsp;A100 80GB &nbsp;$1.34 &nbsp;&nbsp;8 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;us-east</span><br>
+      <span class="mid">RunPod &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;A100 80GB &nbsp;$1.64 &nbsp;&nbsp;12 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;us-east</span><br>
+      <span class="mid">OVH &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;A100 80GB &nbsp;$2.10 &nbsp;&nbsp;2 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;eu-west</span><br>
+      <span class="expensive">AWS (spot) &nbsp;&nbsp;&nbsp;&nbsp;A100 80GB &nbsp;$3.97 &nbsp;&nbsp;8 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;us-east-1</span><br><br>
+      <span class="cheap">💰 Cheapest: A100 80GB on Lambda Labs at $1.10/hr (us-west)</span><br>
+      <span class="cheap">&nbsp;&nbsp;&nbsp;You save $2.87/hr vs AWS — that's $2,066/mo per GPU</span>
+    </div>
+  </div>
+</div>
+
+<!-- SAVINGS STRIP -->
+<div class="savings-strip">
+  <p>Average savings for teams switching to GPUFlux</p>
+  <div class="savings-number">30 – 50%</div>
+  <p class="savings-sub">on monthly GPU compute spend</p>
+</div>
+
+<!-- PROBLEM -->
+<section class="section" id="problem">
+  <div class="section-label">The Problem</div>
+  <h2>You're burning money on GPUs<br>and you know it.</h2>
+  <p class="lead">GPU prices vary 3–5x between providers at any given moment. But you don't have time to price-shop across 15 platforms, manage multiple accounts, and migrate workloads. So you overpay.</p>
+
+  <div class="problem-grid">
+    <div class="problem-card">
+      <span class="problem-icon">💸</span>
+      <h3>Massive overspend</h3>
+      <p>An A100 costs $3.97/hr on AWS spot but $1.10/hr on Lambda Labs. At 10 GPUs running 24/7, that's $20K/month wasted on a single instance type.</p>
+    </div>
+    <div class="problem-card">
+      <span class="problem-icon">🔥</span>
+      <h3>Constant firefighting</h3>
+      <p>Spot instances get reclaimed. Servers go down. Someone has to babysit the infrastructure 24/7 or your training run dies at hour 47.</p>
+    </div>
+    <div class="problem-card">
+      <span class="problem-icon">🩹</span>
+      <h3>Duct-tape infrastructure</h3>
+      <p>Your GPU stack is a mess of Terraform configs, bash scripts, and tribal knowledge spread across 3 cloud providers and a Hetzner box nobody documented.</p>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how">
+  <div class="section-label">How It Works</div>
+  <h2>One command. Cheapest GPU.<br>Every time.</h2>
+  <p class="lead">GPUFlux is an open-source CLI that plugs into every major GPU provider, finds the best price for your workload, and deploys it automatically.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <h3>Define your workload</h3>
+      <p>Specify GPU type, VRAM, Docker image, and budget in a simple YAML file. Takes 30 seconds.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <h3>GPUFlux finds the best deal</h3>
+      <p>We query every provider in real-time, compare pricing, availability, and reliability scores across regions.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <h3>Deploy automatically</h3>
+      <p>One command provisions the cheapest matching instance, deploys your job, and starts monitoring. Done.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <h3>Stay optimised</h3>
+      <p>Coming soon: auto-migration when cheaper capacity appears, failover on termination, and spend tracking.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PROVIDERS -->
+<section class="section">
+  <div class="section-label">Providers</div>
+  <h2>Every GPU cloud. One interface.</h2>
+  <p class="lead">We're building integrations with every major GPU provider — including bare-metal, which most competitors ignore entirely.</p>
+
+  <div class="providers-grid">
+    <div class="provider-chip"><span class="status live"></span> Lambda Labs</div>
+    <div class="provider-chip"><span class="status live"></span> RunPod</div>
+    <div class="provider-chip"><span class="status soon"></span> OVH (bare-metal)</div>
+    <div class="provider-chip"><span class="status soon"></span> Hetzner</div>
+    <div class="provider-chip"><span class="status soon"></span> AWS Spot</div>
+    <div class="provider-chip"><span class="status planned"></span> GCP Spot</div>
+    <div class="provider-chip"><span class="status planned"></span> CoreWeave</div>
+    <div class="provider-chip"><span class="status planned"></span> Vast.ai</div>
+    <div class="provider-chip"><span class="status planned"></span> FluidStack</div>
+  </div>
+
+  <p style="margin-top:1.5rem; font-size:0.85rem; color:var(--text-dim);">
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span class="status live" style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;"></span> Live</span> &nbsp;&middot;&nbsp;
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--yellow);display:inline-block;"></span> Coming soon</span> &nbsp;&middot;&nbsp;
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--text-dim);display:inline-block;"></span> Planned</span>
+  </p>
+</section>
+
+<!-- INVESTORS -->
+<section class="section investor-section" id="investors">
+  <div class="section-label">For Investors</div>
+  <h2>The infrastructure layer the AI economy is missing.</h2>
+  <p class="lead">Every company deploying AI models needs GPU compute. Nobody is solving the orchestration and cost optimisation layer across providers. That's GPUFlux.</p>
+
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="metric-value">$45B+</div>
+      <div class="metric-label">GPU cloud market (2024)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">28%</div>
+      <div class="metric-label">Annual growth rate</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">3–5x</div>
+      <div class="metric-label">Price variance between providers</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">0</div>
+      <div class="metric-label">Competitors with bare-metal integration</div>
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding:2rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px;">
+    <h3 style="font-size:1.1rem; color:var(--text-bright); margin-bottom:1rem;">Why now?</h3>
+    <p style="color:var(--text-dim); font-size:0.95rem; line-height:1.8; max-width:700px;">
+      GPU scarcity is easing — shifting from "find any GPU" to "find the cheapest GPU." The provider landscape is fragmenting with 15+ serious competitors. Enterprise AI is moving from experimentation to production, demanding cost efficiency. And nobody owns the multi-provider orchestration layer yet. The window is open.
+    </p>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Ready to stop overpaying?</h2>
+  <p>GPUFlux is open source and free. Install it, plug in your API keys, and start saving.</p>
+  <div class="cta-buttons">
+    <a href="https://github.com/Reflex1171/GPUFlux" class="btn-primary" style="font-size:1rem; padding:0.8rem 2rem;">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      Star on GitHub
+    </a>
+    <a href="mailto:noah@gpuflux.dev" class="btn-secondary" style="font-size:1rem; padding:0.8rem 2rem;">Get in touch →</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>⚡ GPUFlux &middot; Built by <a href="https://github.com/Reflex1171">Noah Akers-Douglas</a> &middot; <a href="https://github.com/Reflex1171/GPUFlux">GitHub</a> &middot; <a href="https://pypi.org/project/gpuflux/">PyPI</a></p>
+</footer>
+
+</body>
+</html>
